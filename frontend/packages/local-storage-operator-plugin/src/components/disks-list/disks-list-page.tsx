@@ -2,8 +2,7 @@ import * as React from 'react';
 import { useTranslation } from 'react-i18next';
 import * as _ from 'lodash';
 import * as cx from 'classnames';
-import { Link } from 'react-router-dom';
-import { Button, EmptyState, EmptyStateVariant } from '@patternfly/react-core';
+import { Button, EmptyState, EmptyStateVariant, Alert } from '@patternfly/react-core';
 import { sortable } from '@patternfly/react-table';
 import {
   Table,
@@ -17,6 +16,7 @@ import {
   FirehoseResult,
   humanizeBinaryBytes,
   Kebab,
+  Loading,
   LoadingInline,
 } from '@console/internal/components/utils';
 import { referenceForModel, NodeKind } from '@console/internal/module/k8s';
@@ -24,9 +24,14 @@ import { RowFilter } from '@console/internal/components/filter-toolbar';
 import { useK8sWatchResource } from '@console/internal/components/utils/k8s-watch-hook';
 import { SubscriptionKind, SubscriptionModel } from '@console/operator-lifecycle-manager';
 import { getNamespace, getNodeRole } from '@console/shared/';
-import { LocalVolumeDiscovery, LocalVolumeDiscoveryResult } from '../../models';
+import { LocalVolumeDiscoveryResult } from '../../models';
 import { LABEL_SELECTOR } from '../../constants/disks-list';
 import { DiskMetadata, DiskStates, LocalVolumeDiscoveryResultKind } from './types';
+import {
+  updateLocalVolumeDiscovery,
+  createLocalVolumeDiscovery,
+} from '../local-volume-discovery/request';
+import { errorMessage } from '@console/internal-integration-tests/views/crud.view';
 
 export const tableColumnClasses = [
   '',
@@ -120,8 +125,30 @@ export const NodesDisksListPage: React.FC<NodesDisksListPageProps> = ({
   const operatorNs = getNamespace(subscription[0]);
   const csvName = subscription?.[0]?.status?.installedCSV;
   const nodeName = obj.metadata.name;
+  const nodeNameByHostnameLabel = obj.metadata?.labels?.['kubernetes.io/hostname'];
   const nodeRole = getNodeRole(obj);
   const propName = `lvdr-${nodeName}`;
+  const [helpMessage, setError] = React.useState('');
+  const [inProgress, setProgress] = React.useState(false);
+
+  const makeLocalVolumeDiscoverRequest = async (node: string, ns: string) => {
+    setProgress(true);
+    try {
+      await updateLocalVolumeDiscovery([node], ns, setError);
+    } catch (error) {
+      if (error?.response?.status === 404) {
+        try {
+          await createLocalVolumeDiscovery([node], ns, setError);
+        } catch (createError) {
+          setError(createError.message);
+        }
+      } else {
+        setError(error.message);
+      }
+    } finally {
+      setProgress(false);
+    }
+  };
 
   const EmptyMsg = () => (
     <EmptyState variant={EmptyStateVariant.large}>
@@ -131,17 +158,18 @@ export const NodesDisksListPage: React.FC<NodesDisksListPageProps> = ({
         <>
           <p>{t('lso-plugin~Disks Not Found')}</p>
           {csvName && operatorNs && nodeRole !== 'master' && (
-            <Link
-              className="co-m-primary-action"
-              to={`/k8s/ns/${operatorNs}/clusterserviceversions/${csvName}/${referenceForModel(
-                LocalVolumeDiscovery,
-              )}/~new`}
+            <Button
+              onClick={() => {
+                makeLocalVolumeDiscoverRequest(nodeNameByHostnameLabel, operatorNs);
+              }}
+              variant="primary"
+              id="yaml-create"
+              data-test="yaml-create"
             >
-              <Button variant="primary" id="yaml-create" data-test="yaml-create">
-                {t('lso-plugin~Discover Disks')}
-              </Button>
-            </Link>
+              {t('lso-plugin~Discover Disks')}
+            </Button>
           )}
+          {inProgress && <Loading />}
         </>
       )}
     </EmptyState>
@@ -172,26 +200,43 @@ export const NodesDisksListPage: React.FC<NodesDisksListPageProps> = ({
     },
   ];
 
+  const ErrorMessage = ({ message }) => {
+    return (
+      <Alert
+        isInline
+        className="co-alert co-alert--scrollable"
+        variant="danger"
+        title={t('public~An error occurred')}
+      >
+        <div className="co-pre-line">{message}</div>
+      </Alert>
+    );
+  };
+
   return (
-    <MultiListPage
-      canCreate={false}
-      title={t('lso-plugin~Disks')}
-      hideLabelFilter
-      textFilter="node-disk-name"
-      rowFilters={diskFilters}
-      flatten={(resource: FirehoseResult<LocalVolumeDiscoveryResultKind>) =>
-        resource[propName]?.data[0]?.status?.discoveredDevices ?? []
-      }
-      ListComponent={ListComponent ?? DisksList}
-      resources={[
-        {
-          kind: referenceForModel(LocalVolumeDiscoveryResult),
-          prop: propName,
-          selector: { [LABEL_SELECTOR]: nodeName },
-        },
-      ]}
-      customData={{ node: nodeName, EmptyMsg }}
-    />
+    <>
+      <MultiListPage
+        helpText={helpMessage}
+        canCreate={false}
+        title={t('lso-plugin~Disks')}
+        hideLabelFilter
+        textFilter="node-disk-name"
+        rowFilters={diskFilters}
+        flatten={(resource: FirehoseResult<LocalVolumeDiscoveryResultKind>) =>
+          resource[propName]?.data[0]?.status?.discoveredDevices ?? []
+        }
+        ListComponent={ListComponent ?? DisksList}
+        resources={[
+          {
+            kind: referenceForModel(LocalVolumeDiscoveryResult),
+            prop: propName,
+            selector: { [LABEL_SELECTOR]: nodeName },
+          },
+        ]}
+        customData={{ node: nodeName, EmptyMsg }}
+      />
+      {errorMessage && <ErrorMessage message={errorMessage} />}
+    </>
   );
 };
 
