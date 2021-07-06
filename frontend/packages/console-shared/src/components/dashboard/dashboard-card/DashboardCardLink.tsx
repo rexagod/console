@@ -31,6 +31,7 @@ export const DashboardCardPopupLink: React.FC<DashboardCardPopupLinkProps> = Rea
     onShow,
     onHide,
     position = PopoverPosition.top,
+    maxWidth,
   }) => {
     if (React.Children.count(children) === 0 || !linkTitle) {
       return null;
@@ -44,7 +45,7 @@ export const DashboardCardPopupLink: React.FC<DashboardCardPopupLinkProps> = Rea
         enableFlip
         onShow={onShow}
         onHide={onHide}
-        maxWidth="21rem"
+        maxWidth={maxWidth || '21rem'}
       >
         <DashboardCardButtonLink className={className}>{linkTitle}</DashboardCardButtonLink>
       </Popover>
@@ -67,6 +68,7 @@ type DashboardCardPopupLinkProps = {
   onShow?: () => void;
   onHide?: () => void;
   position?: PopoverPosition;
+  maxWidth?: string;
 };
 
 type DashboardCardLinkProps = DashboardCardButtonLinkProps & {

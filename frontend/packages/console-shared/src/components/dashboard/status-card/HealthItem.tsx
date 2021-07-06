@@ -39,6 +39,7 @@ const HealthItem: React.FC<HealthItemProps> = React.memo(
                 linkTitle={title}
                 popupTitle={popupTitle}
                 className="co-status-card__popup"
+                maxWidth="30rem"
               >
                 {children}
               </DashboardCardPopupLink>
