@@ -120,7 +120,9 @@ export const PageHeading = connectToModel((props: PageHeadingProps) => {
     (hasButtonActions || hasMenuActions || customActionMenu) &&
     hasData &&
     !_.get(data, 'metadata.deletionTimestamp');
-  const resourceStatus = hasData && getResourceStatus ? getResourceStatus(data) : null;
+  const errCode = _.get(obj, ['loadError', 'json', 'code'], null);
+  const resourceStatus =
+    errCode === 404 ? 'Unknown' : hasData && getResourceStatus ? getResourceStatus(data) : null;
   const showHeading = props.icon || kind || resourceTitle || resourceStatus || badge || showActions;
   const showBreadcrumbs = breadcrumbs || (breadcrumbsFor && !_.isEmpty(data));
   return (
